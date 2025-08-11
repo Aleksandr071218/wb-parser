@@ -1,47 +1,65 @@
 import os
 from clickhouse_connect import get_client
+from clickhouse_connect.driver.exceptions import ClickHouseError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from logging_config import get_logger
 
-# Get ClickHouse connection details from environment variables
-# with fallbacks for local development if needed.
-client = get_client(
-    host=os.getenv('CLICKHOUSE_HOST', 'localhost'),
-    port=int(os.getenv('CLICKHOUSE_PORT', 8123)),  # Default ClickHouse HTTP port
-    username=os.getenv('CLICKHOUSE_USER', 'default'),
-    password=os.getenv('CLICKHOUSE_PASSWORD', ''),
-    database=os.getenv('CLICKHOUSE_DB', 'wildberries_data')
+logger = get_logger(__name__)
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception), # A more specific exception like ConnectionError would be better
+    before_sleep=lambda retry_state: logger.warning(f"Retrying ClickHouse connection attempt {retry_state.attempt_number}...")
 )
+def get_clickhouse_client():
+    """Establishes a connection to ClickHouse, with retries."""
+    client = get_client(
+        host=os.getenv('CLICKHOUSE_HOST', 'localhost'),
+        port=int(os.getenv('CLICKHOUSE_PORT', 8123)),
+        username=os.getenv('CLICKHOUSE_USER', 'default'),
+        password=os.getenv('CLICKHOUSE_PASSWORD', ''),
+        database=os.getenv('CLICKHOUSE_DB', 'wildberries_data')
+    )
+    logger.info(f"Connecting to ClickHouse at {os.getenv('CLICKHOUSE_HOST', 'localhost')}:{os.getenv('CLICKHOUSE_PORT', 8123)}")
+    client.ping()
+    logger.info("ClickHouse connection successful.")
+    return client
 
-print(f"🔌 Connecting to ClickHouse at {os.getenv('CLICKHOUSE_HOST', 'localhost')}:{os.getenv('CLICKHOUSE_PORT', 8123)}")
+# Initialize client with retries
+try:
+    client = get_clickhouse_client()
+except Exception as e:
+    logger.error("Failed to connect to ClickHouse after multiple retries.", exc_info=True)
+    client = None
 
 
 def parse_category_levels(category_raw: str):
     parts = category_raw.split('_')
-    category = parts[-1]  # last part as the main category
-
-    # L1 = last part, L2 = second last, etc.
-    levels = [None, None, None, None]  # L1, L2, L3, L4
-
-    # Fill levels in reverse order
+    category = parts[-1]
+    levels = [None, None, None, None]
     for i, part in enumerate(reversed(parts)):
         if i < 4:
             levels[i] = part
-
     return category, levels
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=6),
+    retry=retry_if_exception_type(ClickHouseError),
+    before_sleep=lambda retry_state: logger.warning(f"Retrying DB insert for article {retry_state.args[0].get('article', 'N/A')}, attempt {retry_state.attempt_number}...")
+)
 def insert_product_if_new(data: dict):
-    # Get data with fallback values
-    article = data.get("article", "")
-    product_url = data.get("link", "")
-    category_raw = data.get("category", "")
+    if not client:
+        logger.error("ClickHouse client not available. Skipping insert.")
+        return
 
-    # Skip only if there's no article (main identifier)
+    article = data.get("article", "")
     if not article:
-        print("⚠️ Skipped: no article", data)
+        logger.warning("Skipped insert: no article provided.", extra={"data": data})
         return
 
     try:
-        # Ensure client is connected
-        client.ping()
         result = client.query(
             "SELECT count() FROM wildberries_products_parsed WHERE article = %(article)s",
             parameters={'article': article}
@@ -49,43 +67,42 @@ def insert_product_if_new(data: dict):
         existing = result.result_rows[0][0] if result.result_rows else 0
 
         if existing > 0:
-            # print(f"⏭ Already exists: {article}") # This can be noisy
+            logger.debug(f"Article {article} already exists. Skipping.")
             return
-    except Exception as check_e:
-        print(f"⚠️ Error checking existence of {article}: {check_e}")
-        # Continue with insertion if we couldn't check
+    except ClickHouseError as check_e:
+        logger.error(f"Error checking existence of article {article}. Retrying...", exc_info=True)
+        raise # Re-raise to trigger tenacity retry
+    except Exception as e:
+        logger.error(f"Non-retryable error checking existence of article {article}.", exc_info=True)
+        return # Do not proceed with insert
 
-    # Process category (even if empty)
+    category_raw = data.get("category", "")
     if category_raw:
         category, (category_l1, category_l2, category_l3, category_l4) = parse_category_levels(category_raw)
     else:
-        category = ""
-        category_l1 = ""
-        category_l2 = ""
-        category_l3 = ""
-        category_l4 = ""
+        category, category_l1, category_l2, category_l3, category_l4 = "", "", "", "", ""
 
-    # Match the actual table structure (8 columns)
     insert_data = (
-        article or "",           # article
-        product_url or "",      # product_url
-        category_raw or "",     # category_raw
-        category or "",         # category
-        category_l1 or "",      # category_l1
-        category_l2 or "",      # category_l2
-        category_l3 or "",      # category_l3
-        category_l4 or ""       # category_l4
+        article,
+        data.get("link", ""),
+        category_raw,
+        category,
+        category_l1,
+        category_l2,
+        category_l3,
+        category_l4
     )
 
     try:
-        result = client.insert(
+        client.insert(
             table='wildberries_products_parsed',
             data=[insert_data],
             column_names=['article', 'product_url', 'category_raw', 'category', 'category_l1', 'category_l2', 'category_l3', 'category_l4']
         )
-        print(f"✅ Added: {article}")
+        logger.info(f"Successfully inserted article {article}.")
+    except ClickHouseError as e:
+        logger.error(f"Failed to insert product {article}. Retrying...", exc_info=True)
+        raise # Re-raise to trigger tenacity retry
     except Exception as e:
-        error_msg = str(e) if str(e) != '0' else 'Unknown ClickHouse error'
-        print(f"❌ Error inserting product {article}: {error_msg}")
-        print(f"🧾 Error type: {type(e).__name__}")
-        print(f"🧾 Data: {insert_data}")
+        logger.error(f"Non-retryable error inserting product {article}.", exc_info=True, extra={"insert_data": insert_data})
+        # Do not re-raise, just log and fail for this item

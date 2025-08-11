@@ -6,3 +6,4 @@ fastapi
 uvicorn[standard]
 webdriver-manager
 celery[redis]
+tenacity
