@@ -1,15 +1,16 @@
 # WB-Parser
 
-A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data.
+A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data. The project features an asynchronous API for non-blocking task management.
 
 ## Features
 
 - Automatically adjusts price ranges to bypass the 6000-item limit
 - Parses all pages of a category
+- **Asynchronous API:** Start parsing jobs without waiting for them to complete.
+- **Task Status Tracking:** Check the status and results of parsing jobs.
 - Scrolls to the bottom of each page to load dynamic content
-- Extracts product links using `BeautifulSoup`
 - Stores data in ClickHouse
-- Deploys as a containerized service with a remote-control API
+- Deploys as a containerized service with Docker Compose.
 
 ---
 
@@ -24,24 +25,20 @@ This project is designed to run with Docker and Docker Compose, which simplifies
 
 ### Quick Start
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd wb-parser-final
-    ```
+1.  **Clone the repository and navigate to the directory.**
 
 2.  **Build and start the services:**
     From the `wb-parser-final` directory, run:
     ```bash
-    docker-compose up --build
+    docker-compose up --build -d
     ```
-    This command will build the Docker image for the application, download the necessary images for Selenium and ClickHouse, and start all services.
+    This command will build and start all services (app, worker, selenium, redis, clickhouse) in detached mode.
 
 3.  **Run the parser via API:**
-    Once the services are running, you can trigger the parser by sending a request to the API.
+    Once the services are running, you can trigger the parser by sending a request to the API as described in the "API Usage" section below.
 
 4.  **Shutting down:**
-    To stop all running services, press `Ctrl+C` in the terminal, and then run:
+    To stop all running services, run:
     ```bash
     docker-compose down
     ```
@@ -50,32 +47,71 @@ This project is designed to run with Docker and Docker Compose, which simplifies
 
 ## API Usage
 
-The application exposes a FastAPI server for remote control.
+The application uses an asynchronous API. You first submit a job, which returns a `task_id`. You can then use this ID to check the status of the job.
 
-- **Endpoint:** `GET /parse/`
-- **URL:** `http://localhost:8000/parse/`
+### 1. Submit a Parsing Task
 
-**Parameters:**
-- `url` (required): The full URL to a Wildberries category.
-- `step` (optional, default: 5000): The price step for range adjustments.
-- `max_products` (optional, default: 6000): The product limit to stay under.
+- **Endpoint:** `POST /parse`
+- **Method:** `POST`
+- **Body:** A JSON object with the URL and optional parameters.
+  ```json
+  {
+    "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki",
+    "step": 5000,
+    "max_products": 6000
+  }
+  ```
 
-**Example using `curl`:**
+**Example `curl` command:**
 ```bash
-curl -X GET "http://localhost:8000/parse/?url=https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
+curl -X POST "http://localhost:8000/parse" \
+-H "Content-Type: application/json" \
+-d '{"url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"}'
 ```
+
+**Successful Response (202 Accepted):**
+The API will immediately respond with a task ID.
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+  "status": "Accepted"
+}
+```
+
+### 2. Check Task Status
+
+- **Endpoint:** `GET /tasks/{task_id}`
+- **Method:** `GET`
+
+**Example `curl` command:**
+```bash
+curl http://localhost:8000/tasks/a1b2c3d4-e5f6-7890-1234-567890abcdef
+```
+
+**Response:**
+The response will show the current status of the task (`PENDING`, `STARTED`, `SUCCESS`, `FAILURE`). If the task is complete, the `result` field will be populated.
+```json
+{
+  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+  "status": "SUCCESS",
+  "result": {
+    "status": "Completed",
+    "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
+  }
+}
+```
+If the task failed, the `result` will contain error information.
 
 ---
 
 ## Local Development (Alternative)
 
-If you prefer to run the application without Docker, you can set it up locally.
-
 ### System Requirements
 
 - Python 3.8+
-- Google Chrome
-- `chromedriver` (or use `webdriver-manager` which is included in `requirements.txt`)
+- Google Chrome & `chromedriver`
+- **Redis Server**
+- **ClickHouse Instance**
 
 ### Setup
 
@@ -84,11 +120,17 @@ If you prefer to run the application without Docker, you can set it up locally.
     pip install -r project/requirements.txt
     ```
 
-2.  **Configure ClickHouse:**
-    Ensure you have a running ClickHouse instance and update the connection details in `project/selenium_parser/utils/clickhouse_insert.py` or set the corresponding environment variables (`CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, etc.).
+2.  **Configure Environment:**
+    Ensure you have running instances of Redis and ClickHouse. Set the following environment variables if they are not running on default ports on localhost:
+    - `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, etc.
+    - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
 
 3.  **Run the API server:**
     ```bash
     uvicorn project.api:app --reload
     ```
-The server will be available at `http://localhost:8000`.
+4.  **Run the Celery worker:**
+    In a separate terminal, run:
+    ```bash
+    celery -A project.celery_app.celery worker --loglevel=info
+    ```

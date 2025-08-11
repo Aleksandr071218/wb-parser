@@ -5,3 +5,4 @@ clickhouse-connect==0.6.23
 fastapi
 uvicorn[standard]
 webdriver-manager
+celery[redis]
