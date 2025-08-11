@@ -35,6 +35,8 @@ except Exception as e:
 
 
 def parse_category_levels(category_raw: str):
+    if not category_raw:
+        return "", [None, None, None, None]
     parts = category_raw.split('_')
     category = parts[-1]
     levels = [None, None, None, None]

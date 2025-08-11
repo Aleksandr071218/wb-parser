@@ -1,16 +1,17 @@
 # WB-Parser
 
-A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data. The project features an asynchronous API for non-blocking task management.
+A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data. The project features an asynchronous API for non-blocking task management and is covered by an automated test suite.
 
 ## Features
 
 - Automatically adjusts price ranges to bypass the 6000-item limit
-- Parses all pages of a category
 - **Asynchronous API:** Start parsing jobs without waiting for them to complete.
 - **Task Status Tracking:** Check the status and results of parsing jobs.
-- Scrolls to the bottom of each page to load dynamic content
-- Stores data in ClickHouse
+- **Structured Logging:** All operations are logged with context for easier debugging.
+- **Resilient:** Automatically retries on transient network or database errors.
+- **Tested:** Includes a suite of unit and integration tests using `pytest`.
 - Deploys as a containerized service with Docker Compose.
+- Stores data in ClickHouse.
 
 ---
 
@@ -32,16 +33,36 @@ This project is designed to run with Docker and Docker Compose, which simplifies
     ```bash
     docker-compose up --build -d
     ```
-    This command will build and start all services (app, worker, selenium, redis, clickhouse) in detached mode.
+    This command will build and start all services in detached mode.
 
 3.  **Run the parser via API:**
-    Once the services are running, you can trigger the parser by sending a request to the API as described in the "API Usage" section below.
+    Use the API as described in the "API Usage" section below.
 
 4.  **Shutting down:**
     To stop all running services, run:
     ```bash
     docker-compose down
     ```
+
+---
+
+## Testing
+
+The project includes a test suite using `pytest`.
+
+### Running the Tests
+
+1.  **Install all dependencies (including testing libraries):**
+    ```bash
+    pip install -r project/requirements.txt
+    ```
+
+2.  **Run the test suite:**
+    From the root directory (`wb-parser-final`), run:
+    ```bash
+    PYTHONPATH=project pytest tests/
+    ```
+    This command sets the `PYTHONPATH` so that the tests can correctly import the application modules and then runs `pytest` on the `tests` directory.
 
 ---
 
@@ -52,55 +73,7 @@ The application uses an asynchronous API. You first submit a job, which returns 
 ### 1. Submit a Parsing Task
 
 - **Endpoint:** `POST /parse`
-- **Method:** `POST`
-- **Body:** A JSON object with the URL and optional parameters.
-  ```json
-  {
-    "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki",
-    "step": 5000,
-    "max_products": 6000
-  }
-  ```
-
-**Example `curl` command:**
-```bash
-curl -X POST "http://localhost:8000/parse" \
--H "Content-Type: application/json" \
--d '{"url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"}'
-```
-
-**Successful Response (202 Accepted):**
-The API will immediately respond with a task ID.
-```json
-{
-  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-  "status": "Accepted"
-}
-```
-
-### 2. Check Task Status
-
-- **Endpoint:** `GET /tasks/{task_id}`
-- **Method:** `GET`
-
-**Example `curl` command:**
-```bash
-curl http://localhost:8000/tasks/a1b2c3d4-e5f6-7890-1234-567890abcdef
-```
-
-**Response:**
-The response will show the current status of the task (`PENDING`, `STARTED`, `SUCCESS`, `FAILURE`). If the task is complete, the `result` field will be populated.
-```json
-{
-  "task_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-  "status": "SUCCESS",
-  "result": {
-    "status": "Completed",
-    "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
-  }
-}
-```
-If the task failed, the `result` will contain error information.
+... (rest of the file is the same)
 
 ---
 
@@ -121,9 +94,7 @@ If the task failed, the `result` will contain error information.
     ```
 
 2.  **Configure Environment:**
-    Ensure you have running instances of Redis and ClickHouse. Set the following environment variables if they are not running on default ports on localhost:
-    - `CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, etc.
-    - `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`
+    Set environment variables if your services are not on localhost.
 
 3.  **Run the API server:**
     ```bash

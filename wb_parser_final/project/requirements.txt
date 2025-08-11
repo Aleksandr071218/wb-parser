@@ -7,3 +7,9 @@ uvicorn[standard]
 webdriver-manager
 celery[redis]
 tenacity
+
+# Testing dependencies
+pytest
+pytest-asyncio
+httpx
+pytest-mock
