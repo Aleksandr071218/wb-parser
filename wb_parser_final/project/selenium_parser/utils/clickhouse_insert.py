@@ -1,26 +1,24 @@
+import sys
+import os
 
-from clickhouse_connect import get_client
+# Add project root to Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-client = get_client(
-    host='',        # 🔁 Replace if not localhost
-    port=0000,
-    username='',      # 🔁 Your username
-    password='',             # 🔁 Your password
-    database=''
-)
+from db import client
+
 
 def parse_category_levels(category_raw: str):
     parts = category_raw.split('_')
     category = parts[-1]  # last part as the main category
-    
+
     # L1 = last part, L2 = second last, etc.
     levels = [None, None, None, None]  # L1, L2, L3, L4
-    
+
     # Fill levels in reverse order
     for i, part in enumerate(reversed(parts)):
         if i < 4:
             levels[i] = part
-    
+
     return category, levels
 
 def insert_product_if_new(data: dict):
@@ -40,7 +38,7 @@ def insert_product_if_new(data: dict):
             parameters={'article': article}
         )
         existing = result.result_rows[0][0] if result.result_rows else 0
-        
+
         if existing > 0:
             print(f"⏭ Already exists: {article}")
             return

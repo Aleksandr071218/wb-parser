@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wildberries Parser</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .controls { margin-bottom: 1em; }
+        #status { margin-top: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Wildberries Parser</h1>
+    <div class="controls">
+        <input type="text" id="urlInput" placeholder="Enter Wildberries category URL" size="80">
+        <button id="parseBtn">Parse</button>
+        <button id="refreshBtn">Refresh</button>
+    </div>
+    <div id="status"></div>
+    <table id="productsTable">
+        <thead>
+            <tr>
+                <th>Article</th>
+                <th>Product URL</th>
+                <th>Category Raw</th>
+                <th>Category</th>
+                <th>Category L1</th>
+                <th>Category L2</th>
+                <th>Category L3</th>
+                <th>Category L4</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Product rows will be inserted here -->
+        </tbody>
+    </table>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const parseBtn = document.getElementById('parseBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const statusDiv = document.getElementById('status');
+        const productsTableBody = document.querySelector('#productsTable tbody');
+
+        parseBtn.addEventListener('click', async () => {
+            const url = urlInput.value;
+            if (!url) {
+                statusDiv.textContent = 'Please enter a URL.';
+                return;
+            }
+            statusDiv.textContent = 'Starting parser...';
+            try {
+                const response = await fetch(`/parse/?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                if (response.ok) {
+                    statusDiv.textContent = 'Parsing started successfully. You can refresh the product list in a moment.';
+                } else {
+                    statusDiv.textContent = `Error: ${data.error}`;
+                }
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        refreshBtn.addEventListener('click', async () => {
+            statusDiv.textContent = 'Loading products...';
+            try {
+                const response = await fetch('/products/');
+                const products = await response.json();
+                productsTableBody.innerHTML = ''; // Clear existing rows
+                if (response.ok) {
+                    if (products.error) {
+                         statusDiv.textContent = `Error: ${products.error}`;
+                         return;
+                    }
+                    products.forEach(product => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${product.article}</td>
+                            <td>${product.product_url}</td>
+                            <td>${product.category_raw}</td>
+                            <td>${product.category}</td>
+                            <td>${product.category_l1}</td>
+                            <td>${product.category_l2}</td>
+                            <td>${product.category_l3}</td>
+                            <td>${product.category_l4}</td>
+                        `;
+                        productsTableBody.appendChild(row);
+                    });
+                    statusDiv.textContent = `Loaded ${products.length} products.`;
+                } else {
+                    statusDiv.textContent = `Error: ${products.error}`;
+                }
+            } catch (error) {
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html>
