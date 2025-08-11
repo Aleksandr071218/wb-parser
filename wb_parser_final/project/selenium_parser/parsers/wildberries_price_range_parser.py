@@ -1,9 +1,12 @@
 import time
 import re
+import os
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from webdriver_manager.chrome import ChromeDriverManager
 
 from selenium_parser import settings
 from selenium_parser.utils.price_range_utils import find_suitable_upper, target_min_count, target_max_count
@@ -15,11 +18,33 @@ class WildberriesPriceRangeParser:
     def __init__(self, start_url):
         self.start_url = start_url
         chrome_options = Options()
-        # chrome_options.add_argument("--headless")  # You can enable headless mode later
-        if settings.CHROMEDRIVER_PATH:
-            self.driver = webdriver.Chrome(settings.CHROMEDRIVER_PATH, options=chrome_options)
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        selenium_remote_url = os.getenv("SELENIUM_REMOTE_URL")
+        if selenium_remote_url:
+            print(f"🔌 Connecting to remote Selenium at {selenium_remote_url}")
+            self.driver = webdriver.Remote(
+                command_executor=selenium_remote_url,
+                options=chrome_options
+            )
         else:
-            self.driver = webdriver.Chrome(options=chrome_options)
+            print("🚀 Starting local Selenium driver")
+            # Check for CHROMEDRIVER_PATH in settings for local development
+            try:
+                driver_path = settings.CHROMEDRIVER_PATH
+            except AttributeError:
+                driver_path = None
+
+            if driver_path:
+                service = ChromeService(executable_path=driver_path)
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            else:
+                # If no path is set, use webdriver-manager
+                service = ChromeService(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+
         self.driver.implicitly_wait(5)
 
         # Base domain
@@ -40,7 +65,7 @@ class WildberriesPriceRangeParser:
         path = urlparse(start_url).path
         if path.endswith("/"):
             path = path[:-1]
-        
+
         if "/catalog/" in path:
             cat_path = path.split("/catalog/")[1]
             category_name = unquote(cat_path.replace("/", "_"))

@@ -1,46 +1,94 @@
-WB-Parser
-A robust Python-based web scraper for Wildberries that dynamically adjusts price filters to bypass product limits, paginates through all available items, extracts product links and details, and stores the data in ClickHouse for further analysis.
-Wildberries Parser
+# WB-Parser
 
 A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data.
 
-
-
-Features
+## Features
 
 - Automatically adjusts price ranges to bypass the 6000-item limit
 - Parses all pages of a category
 - Scrolls to the bottom of each page to load dynamic content
 - Extracts product links using `BeautifulSoup`
 - Stores data in ClickHouse
-- Flexible configuration and easy to scale
+- Deploys as a containerized service with a remote-control API
 
+---
 
+## Running with Docker (Recommended)
 
-Quick Start
+This project is designed to run with Docker and Docker Compose, which simplifies setup and deployment.
 
-Install dependencies
-pip install -r requirements.txt
- 
- 
-System Requirements
-Python: Version 3.8 or higher
-Google Chrome: Installed on your system
-ChromeDriver
+### Prerequisites
 
-This project includes a lightweight FastAPI server that exposes an HTTP API for controlling the Wildberries parser remotely. It allows external tools—such as frontend clients, cron jobs, or scripts—to trigger the parsing process dynamically by sending HTTP requests. The main purpose of the FastAPI integration is to provide a clean and flexible interface for passing category URLs without modifying the code manually.
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
 
-The core endpoint is POST /parse, which accepts a JSON payload containing a Wildberries category URL. When this endpoint is called, it initializes the WildberriesPriceRangeParser with the given URL and starts the entire parsing process: scrolling pages, collecting product links, and saving results to ClickHouse. This makes it easy to launch the parser on demand or integrate it into automated workflows.
+### Quick Start
 
-To use the API, first start the FastAPI server by running:
-uvicorn project.api:app --reload
-Then, send a POST request to http://localhost:8000/parse with a JSON body like:
-{
-  "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
-}
-You can use tools like Postman, curl, or any HTTP client to interact with the API.
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd wb-parser-final
+    ```
 
-The API logic is implemented in project/api.py, and depends on fastapi and uvicorn, which can be installed via:
-pip install fastapi uvicorn
-This setup provides a scalable and extensible foundation for remote control, integration with external systems, or deployment in Dockerized environments with API endpoints.
+2.  **Build and start the services:**
+    From the `wb-parser-final` directory, run:
+    ```bash
+    docker-compose up --build
+    ```
+    This command will build the Docker image for the application, download the necessary images for Selenium and ClickHouse, and start all services.
 
+3.  **Run the parser via API:**
+    Once the services are running, you can trigger the parser by sending a request to the API.
+
+4.  **Shutting down:**
+    To stop all running services, press `Ctrl+C` in the terminal, and then run:
+    ```bash
+    docker-compose down
+    ```
+
+---
+
+## API Usage
+
+The application exposes a FastAPI server for remote control.
+
+- **Endpoint:** `GET /parse/`
+- **URL:** `http://localhost:8000/parse/`
+
+**Parameters:**
+- `url` (required): The full URL to a Wildberries category.
+- `step` (optional, default: 5000): The price step for range adjustments.
+- `max_products` (optional, default: 6000): The product limit to stay under.
+
+**Example using `curl`:**
+```bash
+curl -X GET "http://localhost:8000/parse/?url=https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
+```
+
+---
+
+## Local Development (Alternative)
+
+If you prefer to run the application without Docker, you can set it up locally.
+
+### System Requirements
+
+- Python 3.8+
+- Google Chrome
+- `chromedriver` (or use `webdriver-manager` which is included in `requirements.txt`)
+
+### Setup
+
+1.  **Install dependencies:**
+    ```bash
+    pip install -r project/requirements.txt
+    ```
+
+2.  **Configure ClickHouse:**
+    Ensure you have a running ClickHouse instance and update the connection details in `project/selenium_parser/utils/clickhouse_insert.py` or set the corresponding environment variables (`CLICKHOUSE_HOST`, `CLICKHOUSE_PORT`, etc.).
+
+3.  **Run the API server:**
+    ```bash
+    uvicorn project.api:app --reload
+    ```
+The server will be available at `http://localhost:8000`.
