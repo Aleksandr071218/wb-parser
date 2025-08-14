@@ -1,5 +1,4 @@
-
 # selenium_parser/settings.py
-# Path to the ChromeDriver executable.
-# If chromedriver is in the PATH, you can leave this as an empty string.
+# Путь к исполняемому файлу ChromeDriver.
+# Если chromedriver находится в PATH, вы можете оставить это поле пустым.
 CHROMEDRIVER_PATH = ""

@@ -1,36 +1,35 @@
-
 # selenium_parser/utils/price_range_utils.py
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
-# Range and step settings
-target_min_count = 5000  # desired minimum number of products in the range
-target_max_count = 6000  # desired maximum number of products in the range
-min_step = 0.1           # minimum step for changing the boundary (in RUB)
+# Настройки диапазона и шага
+target_min_count = 5000  # желаемое минимальное количество товаров в диапазоне
+target_max_count = 6000  # желаемое максимальное количество товаров в диапазоне
+min_step = 0.1           # минимальный шаг для изменения границы (в рублях)
 
 def get_products_count(driver):
-    """Extracts the number of products from the current page."""
+    """Извлекает количество товаров с текущей страницы."""
     try:
-        # First, let's try to find the element with the product count
+        # Сначала попробуем найти элемент с количеством товаров
         count_elements = driver.find_elements(By.XPATH, "//h1/following-sibling::p[contains(@class, 'goods-count')] | "
                                                     "//div[contains(@class, 'catalog-title')]//span[contains(text(), 'товар')] | "
                                                     "//h1[contains(text(), 'товар')]")
-        
+
         for element in count_elements:
             text = element.text.strip()
-            # Search for a number in the text (it might be in the format "143 816 products")
+            # Ищем число в тексте (может быть в формате "143 816 товаров")
             import re
             match = re.search(r'(\d[\d\s]*)\s*товар', text)
             if match:
-                # Remove all non-digit characters and convert to a number
+                # Удаляем все нецифровые символы и преобразуем в число
                 count_str = re.sub(r'[^\d]', '', match.group(1))
                 try:
                     return int(count_str)
                 except (ValueError, AttributeError):
                     continue
-        
-        # If not found in standard places, try to find the number on the page
+
+        # Если не найдено в стандартных местах, попробуем найти число на странице
         page_text = driver.page_source
         matches = re.findall(r'(\d[\d\s]*) товар', page_text)
         if matches:
@@ -38,64 +37,64 @@ def get_products_count(driver):
                 return int(matches[0].replace(' ', ''))
             except (ValueError, AttributeError):
                 pass
-                
-        # If nothing is found, return None
+
+        # Если ничего не найдено, возвращаем None
         return None
-        
+
     except Exception as e:
-        print(f"Error getting product count: {e}")
+        print(f"Ошибка при получении количества товаров: {e}")
         return None
 
 
 def find_suitable_upper(driver, base_url, lower_price):
     """
-    Selects an upper price boundary (in RUB) for a given lower_price,
-    so that the number of products is between target_min_count and target_max_count.
-    Returns a tuple (upper_price, count) or (None, None) if a suitable range could not be found.
+    Подбирает верхнюю границу цены (в рублях) для заданной lower_price,
+    чтобы количество товаров находилось между target_min_count и target_max_count.
+    Возвращает кортеж (upper_price, count) или (None, None), если подходящий диапазон не найден.
     """
-    # Initial boundaries for the search
+    # Начальные границы для поиска
     low_price = lower_price
-    # Initial maximum (upper boundary) - we'll take it either from base_url (if upper is specified there), or a very large number
+    # Начальный максимум (верхняя граница) - берем его либо из base_url (если там указан upper), либо очень большое число
     import re
     upper_match = re.search(r'priceU=\d+%3B(\d+)', base_url)
     if upper_match:
-        # priceU is specified in kopecks, convert to rubles
+        # priceU указан в копейках, конвертируем в рубли
         max_upper_price = int(upper_match.group(1)) / 100.0
     else:
-        max_upper_price = 10000000.0  # 10 million RUB (default value if not specified)
+        max_upper_price = 10000000.0  # 10 миллионов рублей (значение по умолчанию)
     high_price = max_upper_price
 
     suitable_upper = None
     suitable_count = None
 
-    # Perform a binary search on the upper price boundary
-    # Define a function to load the page with the current range and get the product count
+    # Выполняем бинарный поиск по верхней границе цены
+    # Определяем функцию для загрузки страницы с текущим диапазоном и получения количества товаров
     def load_and_count(lower, upper):
-        # Form the URL with the specified price range
+        # Формируем URL с указанным диапазоном цен
         lower_param = int(lower * 100)
         upper_param = int(upper * 100)
         url = re.sub(r'priceU=\d+%3B\d+', f'priceU={lower_param}%3B{upper_param}', base_url)
         driver.get(url)
         try:
-            # Wait until the product count (or the products themselves) appear on the page
+            # Ждем, пока на странице не появится количество товаров (или сами товары)
             WebDriverWait(driver, 10).until(lambda d: get_products_count(d) is not None)
         except Exception:
             pass
         count = get_products_count(driver)
         return count
 
-    # Get the total number of products for the initial maximum limit
+    # Получаем общее количество товаров для начального максимального предела
     total_count = load_and_count(low_price, high_price)
     if total_count is None:
-        print("Failed to get the number of products for the initial range.")
+        print("Не удалось получить количество товаров для начального диапазона.")
         return None, None
-    # If the total number of products is already below the minimum threshold (meaning the whole category has < 5000 products)
-    # Return the current upper limit as suitable (all products) and the count.
+    # Если общее количество товаров уже ниже минимального порога (т.е. вся категория имеет < 5000 товаров)
+    # Возвращаем текущий верхний предел как подходящий (все товары) и количество.
     if total_count < target_min_count:
         return high_price, total_count
 
-    # Otherwise, start selecting the upper boundary
-    # Range of upper values: [low_price, high_price]
+    # В противном случае, начинаем подбор верхней границы
+    # Диапазон верхних значений: [low_price, high_price]
     left = low_price
     right = high_price
 
@@ -103,29 +102,29 @@ def find_suitable_upper(driver, base_url, lower_price):
         mid = (left + right) / 2.0
         count = load_and_count(low_price, mid)
         if count is None:
-            # If we failed to get the count (unexpected parsing error), stop the search
+            # Если не удалось получить количество (неожиданная ошибка парсинга), прекращаем поиск
             break
-        # Check if we are in the desired range
+        # Проверяем, находимся ли мы в нужном диапазоне
         if target_min_count <= count <= target_max_count:
             suitable_upper = mid
             suitable_count = count
             break
-        # If there are too many products, decrease the upper boundary
+        # Если товаров слишком много, уменьшаем верхнюю границу
         if count > target_max_count:
-            suitable_upper = mid  # remember the current mid as the last one that gives >6000
-            right = mid - 0.1  # decrease the upper limit, step 0.1 RUB
+            suitable_upper = mid  # запоминаем текущий mid как последний, который дает >6000
+            right = mid - 0.1  # уменьшаем верхний предел, шаг 0.1 руб
         else:
-            # If there are too few products, increase the upper boundary
+            # Если товаров слишком мало, увеличиваем верхнюю границу
             left = mid + 0.1
-        # If the search interval has narrowed to the minimum step
+        # Если интервал поиска сузился до минимального шага
         if (right - left) < min_step:
-            # Exit the loop, further refinement is pointless
+            # Выходим из цикла, дальнейшее уточнение бессмысленно
             break
 
-    # Round the upper price down to the nearest 0.1 RUB (to avoid capturing extra products at the boundary value)
+    # Округляем верхнюю цену вниз до ближайших 0.1 руб (чтобы не захватить лишние товары на граничном значении)
     if suitable_upper is not None:
         suitable_upper = round(suitable_upper, 2)
-        # Re-get the exact number of products for the rounded upper value
+        # Повторно получаем точное количество товаров для округленного верхнего значения
         final_count = load_and_count(low_price, suitable_upper)
         suitable_count = final_count if final_count is not None else suitable_count
 
