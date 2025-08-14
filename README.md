@@ -1,46 +1,45 @@
-WB-Parser
-A robust Python-based web scraper for Wildberries that dynamically adjusts price filters to bypass product limits, paginates through all available items, extracts product links and details, and stores the data in ClickHouse for further analysis.
-Wildberries Parser
+WB-Парсер
+Надежный веб-скрапер для Wildberries на Python, который динамически регулирует ценовые фильтры для обхода ограничений на количество товаров, просматривает все доступные страницы, извлекает ссылки на товары и их детали, а также сохраняет данные в ClickHouse для дальнейшего анализа.
+Парсер Wildberries
 
-A powerful Python-based parser for Wildberries, with smart price range filtering, full page scrolling, pagination, and ClickHouse integration for storing extracted product data.
-
-
-
-Features
-
-- Automatically adjusts price ranges to bypass the 6000-item limit
-- Parses all pages of a category
-- Scrolls to the bottom of each page to load dynamic content
-- Extracts product links using `BeautifulSoup`
-- Stores data in ClickHouse
-- Flexible configuration and easy to scale
+Мощный парсер для Wildberries на Python с умной фильтрацией по ценовому диапазону, полной прокруткой страниц, пагинацией и интеграцией с ClickHouse для хранения извлеченных данных о товарах.
 
 
 
-Quick Start
+Особенности
 
-Install dependencies
+- Автоматически регулирует ценовые диапазоны для обхода лимита в 6000 товаров
+- Парсит все страницы категории
+- Прокручивает до конца каждой страницы для загрузки динамического контента
+- Извлекает ссылки на товары с помощью `BeautifulSoup`
+- Сохраняет данные в ClickHouse
+- Гибкая конфигурация и простота масштабирования
+
+
+
+Быстрый старт
+
+Установите зависимости:
 pip install -r requirements.txt
  
  
-System Requirements
-Python: Version 3.8 or higher
-Google Chrome: Installed on your system
+Системные требования
+Python: Версия 3.8 или выше
+Google Chrome: Установлен в вашей системе
 ChromeDriver
 
-This project includes a lightweight FastAPI server that exposes an HTTP API for controlling the Wildberries parser remotely. It allows external tools—such as frontend clients, cron jobs, or scripts—to trigger the parsing process dynamically by sending HTTP requests. The main purpose of the FastAPI integration is to provide a clean and flexible interface for passing category URLs without modifying the code manually.
+Этот проект включает в себя легковесный сервер FastAPI, который предоставляет HTTP API для удаленного управления парсером Wildberries. Это позволяет внешним инструментам, таким как фронтенд-клиенты, cron-задачи или скрипты, запускать процесс парсинга динамически, отправляя HTTP-запросы. Основная цель интеграции FastAPI — предоставить чистый и гибкий интерфейс для передачи URL-адресов категорий без необходимости вручную изменять код.
 
-The core endpoint is POST /parse, which accepts a JSON payload containing a Wildberries category URL. When this endpoint is called, it initializes the WildberriesPriceRangeParser with the given URL and starts the entire parsing process: scrolling pages, collecting product links, and saving results to ClickHouse. This makes it easy to launch the parser on demand or integrate it into automated workflows.
+Основная конечная точка — POST /parse, которая принимает JSON с URL-адресом категории Wildberries. При вызове этой конечной точки инициализируется `WildberriesPriceRangeParser` с указанным URL и запускается весь процесс парсинга: прокрутка страниц, сбор ссылок на товары и сохранение результатов в ClickHouse. Это позволяет легко запускать парсер по требованию или интегрировать его в автоматизированные рабочие процессы.
 
-To use the API, first start the FastAPI server by running:
+Чтобы использовать API, сначала запустите сервер FastAPI:
 uvicorn project.api:app --reload
-Then, send a POST request to http://localhost:8000/parse with a JSON body like:
+Затем отправьте POST-запрос на http://localhost:8000/parse с JSON-телом, например:
 {
   "url": "https://www.wildberries.ru/catalog/obuv/muzhskaya/kedy-i-krossovki"
 }
-You can use tools like Postman, curl, or any HTTP client to interact with the API.
+Вы можете использовать такие инструменты, как Postman, curl или любой другой HTTP-клиент для взаимодействия с API.
 
-The API logic is implemented in project/api.py, and depends on fastapi and uvicorn, which can be installed via:
+Логика API реализована в `project/api.py` и зависит от `fastapi` и `uvicorn`, которые можно установить с помощью:
 pip install fastapi uvicorn
-This setup provides a scalable and extensible foundation for remote control, integration with external systems, or deployment in Dockerized environments with API endpoints.
-
+Такая настройка обеспечивает масштабируемую и расширяемую основу для удаленного управления, интеграции с внешними системами или развертывания в Docker-контейнерах с API-интерфейсами.
