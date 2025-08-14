@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wb_parser_app
+    ports:
+      - "8000:8000"
+    environment:
+      - SELENIUM_REMOTE_URL=http://selenium-chrome:4444/wd/hub
+      - CLICKHOUSE_HOST=clickhouse-server
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_DB=wildberries_data
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./project:/app
+    depends_on:
+      - redis
+      - selenium-chrome
+      - clickhouse-server
+    networks:
+      - wb-parser-net
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wb_parser_worker
+    command: ["celery", "-A", "celery_app.celery", "worker", "--loglevel=info"]
+    environment:
+      - SELENIUM_REMOTE_URL=http://selenium-chrome:4444/wd/hub
+      - CLICKHOUSE_HOST=clickhouse-server
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_DB=wildberries_data
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./project:/app
+    depends_on:
+      - app
+      - redis
+      - selenium-chrome
+      - clickhouse-server
+    networks:
+      - wb-parser-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis_broker
+    ports:
+      - "6379:6379"
+    networks:
+      - wb-parser-net
+
+  selenium-chrome:
+    image: selenium/standalone-chrome:latest
+    container_name: selenium_chrome_standalone
+    shm_size: 2g
+    ports:
+      - "4444:4444"
+      - "7900:7900"
+    networks:
+      - wb-parser-net
+
+  clickhouse-server:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse_db_server
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_DB=wildberries_data
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=password
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-q", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - wb-parser-net
+
+  clickhouse-client:
+    image: clickhouse/clickhouse-client:latest
+    container_name: clickhouse_db_client
+    command: ['--host', 'clickhouse-server', '--password', 'password']
+    depends_on:
+      - clickhouse-server
+    networks:
+      - wb-parser-net
+
+networks:
+  wb-parser-net:
+    driver: bridge
+
+volumes:
+  clickhouse_data:
